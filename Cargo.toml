@@ -1,0 +1,16 @@
+[package]
+edition = "2021"
+name = "crate-name"
+version = "0.1.0"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies.mlua]
+git = "https://github.com/ModProg/mlua/"
+branch = "derive-from_lua"
+features = ["luajit", "vendored", "module", "macros", "send", "async"]
+
+[dependencies.nvim]
+git = "https://github.com/ModProg/nvim-rust"

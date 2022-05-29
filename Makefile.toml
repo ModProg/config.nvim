@@ -1,0 +1,36 @@
+[env]
+MODULE_NAME = "module_name"
+
+[tasks.release]
+script = '''
+#!@duckscript
+exec --fail-on-error cargo build --release
+mkdir lua
+crate_name = get_env CARGO_MAKE_CRATE_FS_NAME
+module_name = get_env MODULE_NAME
+echo target/release/lib${crate_name}.so lua/${module_name}.so
+cp target/release/lib${crate_name}.so lua/${module_name}.so
+'''
+
+[tasks.run]
+dependencies = ["release"]
+script = '''
+#!@duckscript
+if is_path_exists test_proj
+else
+    exec cargo new test_proj --vcs none
+end
+cd test_proj
+module_name = get_env MODULE_NAME
+exec nvim --cmd "set runtimepath+=.." "+lua require'${module_name}'.hello()"
+'''
+
+[tasks._clean]
+script = '''
+#!@duckscript
+rm -r lua
+'''
+
+[tasks.clean]
+dependencies = ["_clean"]
+

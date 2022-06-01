@@ -1,11 +1,20 @@
 [package]
 edition = "2021"
-name = "crate-name"
+name = "config"
 version = "0.1.0"
 license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
+
+[dependencies]
+serde = { version = "1.0.137", features = ["derive"] }
+serde_with = "1.13.0"
+toml = "0.5.9"
+merge = "0.1.0"
+smart-default = "0.6.0"
+derive_more = "0.99.17"
+serde_yaml = "0.8.24"
 
 [dependencies.mlua]
 git = "https://github.com/ModProg/mlua/"
@@ -13,4 +22,5 @@ branch = "derive-from_lua"
 features = ["luajit", "vendored", "module", "macros", "send", "async"]
 
 [dependencies.nvim]
-git = "https://github.com/ModProg/nvim-rust"
+# git = "https://github.com/ModProg/nvim-rust"
+path = "../nvim-rust"

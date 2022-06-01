@@ -1,0 +1,47 @@
+[[keys]]
+modes = "n"
+" o" = "m`o<Esc>``"
+" O" = "m`O<Esc>``"
+# figlet comments
+# TODO " C" = 'gUU:FIGlet -f future<cr>:"[,"]TComment<cr>'
+
+[[keys]]
+modes = ["n", "v"]
+" y" = '"+y'
+" Y" = '"+Y'
+" d" = '"+d'
+" D" = '"+D'
+" p" = '"+p'
+" P" = '"+P'
+
+# Yaml format
+# set = [
+#     "expandtab",
+#     "smartindent",
+#     "ignorecase",
+#     {mouse = "a", completeopt = ["menuone"]},
+#     {"shortmess+" = "c"},
+#     {shortmess = {append = "c"}},
+#     {listchars = {value = {space = "_", tab = ">~"}}},
+#     {listchars = {append = "c", space = "_", tab = ">~"}},
+# ]
+
+[set]
+flags = [
+    "expandtab",
+    "smartindent",
+    "number"
+]
+mouse = "a"
+completeopt = ["menuone", "noinsert", "noselect"]
+
+[set.shortmess]
+"+" = "c"
+prepend = "c"
+
+[set.listchars.value]
+space = "_"
+tab = ">~"
+
+[let.g]
+asciidoctor_syntax_conceal = 1

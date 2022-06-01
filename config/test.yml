@@ -1,0 +1,13 @@
+set:
+  - expandtab
+  - smartindent
+  - ignorecase
+  - mouse: a
+  - shortmess:
+      append: c
+  - completeopt:
+    - menuone
+    - noinsert
+    - noselect
+let:
+  g:asciidoctor_syntax_conceal: 1

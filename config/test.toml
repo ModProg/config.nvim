@@ -13,6 +13,21 @@ modes = ["n", "v"]
 " D" = '"+D'
 " p" = '"+p'
 " P" = '"+P'
+# Move through wrapped lines
+k = "gk"
+j = "gj"
+# Braces
+"ö" = "]"
+"Ö" = "["
+"[}" = "[{"
+"[]" = "[["
+"[)" = "[("
+# Sentence
+"s" = ")"
+"S" = "("
+# IdentDedent
+# TODO
+# "<C-D>" = "call v:lua.cmp.utils.keymap.set_map(5)<CR>"
 
 # Yaml format
 # set = [

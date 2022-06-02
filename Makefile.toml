@@ -8,8 +8,16 @@ exec --fail-on-error cargo build --release
 mkdir lua
 crate_name = get_env CARGO_MAKE_CRATE_FS_NAME
 module_name = get_env MODULE_NAME
-echo target/release/lib${crate_name}.so lua/${module_name}.so
 cp target/release/lib${crate_name}.so lua/${module_name}.so
+'''
+
+[tasks.install]
+dependencies = ["release"]
+script = '''
+#!@duckscript
+module_name = get_env MODULE_NAME
+home = get_home_dir
+cp lua/${module_name}.so ${home}/.config/nvim/lua/${module_name}.so
 '''
 
 [tasks.run]

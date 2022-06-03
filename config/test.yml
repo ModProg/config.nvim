@@ -1,13 +1,32 @@
+keys:
+  - modes:
+      - n
+      - i
+    recursive: true
+    command: false
+    silent: false
+    unique: false
+    expression: false
+    leader: ""
+    j: gj
+    mappings:
+      silent: super silent
 set:
-  - expandtab
-  - smartindent
-  - ignorecase
-  - mouse: a
-  - shortmess:
+  - expandtab 
+  - nonumber 
+  - number: false 
+  - mouse: a 
+    completeopt: ["menuone"] 
+  - shortmess: 
       append: c
-  - completeopt:
-    - menuone
-    - noinsert
-    - noselect
-let:
-  g:asciidoctor_syntax_conceal: 1
+      "+": c
+      prepend: c
+      "^": c
+      remove: c
+      "-": c
+      assign: c 
+      "value": c 
+  - listchars:
+      assign: {tab: "<->"}
+  - listchars:
+      tab: <->

@@ -23,8 +23,10 @@ struct Keys {
     silent: bool,
     unique: bool,
     expression: bool,
+    leader: String,
     // TODO file_type: String,
-    #[serde(flatten, deserialize_with = "deserialize_mappings")]
+    #[serde(flatten)]
+    mappings_: HashMap<String, String>,
     mappings: HashMap<String, String>,
 }
 flattened_maybe!(deserialize_mappings, "mappings");
@@ -147,17 +149,19 @@ impl Config {
             recursive,
             command,
             mappings,
+            mappings_,
             silent,
             unique,
             expression,
+            leader,
         } in &self.keys
         {
             for mode in modes {
-                for (lhs, rhs) in mappings {
+                for (lhs, rhs) in mappings.iter().chain(mappings_.iter()) {
                     let cmd;
                     vim.api().nvim_set_keymap(
                         *mode,
-                        lhs,
+                        &(leader.clone() + lhs),
                         if *command {
                             cmd = format!("<CMD>{rhs}<CR>");
                             &cmd
@@ -193,19 +197,17 @@ impl Config {
 
 fn load_config(lua: &Lua, _: ()) -> LuaResult<()> {
     let vim = &Vim::from(lua);
+    let get_files = |pattern| vim.api().nvim_get_runtime_file(pattern, true).into_iter();
     let mut config = Config::default();
 
-    for path in vim.api().nvim_get_runtime_file("config/*.toml", true) {
+    for path in get_files("config/*.toml") {
         config.merge(toml::from_str(&fs::read_to_string(path).unwrap()).unwrap());
     }
-    for path in vim
-        .api()
-        .nvim_get_runtime_file("config/*.{yml,yaml,json}", true)
-    {
+    for path in get_files("config/*.yml").chain(get_files("config/*.yaml")).chain(get_files("config/*.json")) {
         config.merge(serde_yaml::from_str(&fs::read_to_string(path).unwrap()).unwrap());
     }
+
     // TODO diff config
-    // vim.notify(&format!("{config:?}"), nvim::LogLevel::Info, None);
     config.apply(vim);
     Ok(())
 }

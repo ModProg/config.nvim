@@ -1,62 +1,35 @@
 [[keys]]
-modes = "n"
-" o" = "m`o<Esc>``"
-" O" = "m`O<Esc>``"
-# figlet comments
-# TODO " C" = 'gUU:FIGlet -f future<cr>:"[,"]TComment<cr>'
-
-[[keys]]
-modes = ["n", "v"]
-" y" = '"+y'
-" Y" = '"+Y'
-" d" = '"+d'
-" D" = '"+D'
-" p" = '"+p'
-" P" = '"+P'
-# Move through wrapped lines
-k = "gk"
+modes = [] # list of modes `modes = ["i", "n", "!"]` or for a single mode also `modes = "n"`
+recursive = true # false means `noremap`
+command = false # wrapps all bindings in `<CMD>...<CR>`
+silent = false # make mappings silent
+unique = false # error on duplicate mappings
+expression = false # make rhs of mappings evaluated as an expression
+leader = "" # prefixes all lhs mappings
+# And than add the mappings
 j = "gj"
-# Braces
-"ö" = "]"
-"Ö" = "["
-"[}" = "[{"
-"[]" = "[["
-"[)" = "[("
-# Sentence
-"s" = ")"
-"S" = "("
-# IdentDedent
-# TODO
-# "<C-D>" = "call v:lua.cmp.utils.keymap.set_map(5)<CR>"
-
-# Yaml format
-# set = [
-#     "expandtab",
-#     "smartindent",
-#     "ignorecase",
-#     {mouse = "a", completeopt = ["menuone"]},
-#     {"shortmess+" = "c"},
-#     {shortmess = {append = "c"}},
-#     {listchars = {value = {space = "_", tab = ">~"}}},
-#     {listchars = {append = "c", space = "_", tab = ">~"}},
-# ]
+# Should you want to map one of the above, you can put it in the field `mappings`
+[keys.mappings]
+silent = "supper silent"
 
 [set]
 flags = [
     "expandtab",
-    "smartindent",
-    "number"
+    "nonumber"
 ]
+number = false
 mouse = "a"
-completeopt = ["menuone", "noinsert", "noselect"]
+completeopt = ["menuone"]
+
+shortmess.append = "c"
 
 [set.shortmess]
+append = "c"
 "+" = "c"
 prepend = "c"
+"^" = "c"
+remove = "c"
+"-" = "c"
 
-[set.listchars.value]
-space = "_"
-tab = ">~"
-
-[let.g]
-asciidoctor_syntax_conceal = 1
+[set.listchars]
+tab = "<->"

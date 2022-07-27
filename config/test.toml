@@ -1,6 +1,6 @@
 [[keys]]
-modes = [] # list of modes `modes = ["i", "n", "!"]` or for a single mode also `modes = "n"`
-recursive = true # false means `noremap`
+modes = ["i"] # list of modes `modes = ["i", "n", "!"]` or for a single mode also `modes = "n"`
+recursive = false # false means `noremap`
 command = false # wrapps all bindings in `<CMD>...<CR>`
 silent = false # make mappings silent
 unique = false # error on duplicate mappings

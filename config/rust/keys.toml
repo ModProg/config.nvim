@@ -1,0 +1,12 @@
+[[conditions]]
+filetype = ["rust", "typescript"]
+
+[[conditions]]
+filetype = "lua"
+
+[set]
+number = true
+
+[[keys]]
+modes = "n"
+" d" = "<Plug>(VSurround))idbg!<ESC>"

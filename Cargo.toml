@@ -15,6 +15,9 @@ merge = "0.1.0"
 smart-default = "0.6.0"
 derive_more = "0.99.17"
 serde_yaml = "0.8.24"
+walkdir = "2.3.2"
+sha2 = "0.10.2"
+rmp-serde = "1.1.0"
 
 [dependencies.mlua]
 git = "https://github.com/ModProg/mlua/"

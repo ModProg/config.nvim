@@ -2,7 +2,7 @@ keys:
   - modes:
       - n
       - i
-    recursive: true
+    recursive: false
     command: false
     silent: false
     unique: false

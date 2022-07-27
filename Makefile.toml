@@ -25,7 +25,7 @@ dependencies = ["release"]
 script = '''
 #!@duckscript
 module_name = get_env MODULE_NAME
-exec nvim -u NONE --cmd "set runtimepath=." "+lua require'${module_name}'.load_config()"
+exec nvim -u NONE --cmd "set runtimepath^=." "+lua require'${module_name}'.load_config()"
 '''
 
 [tasks._clean]

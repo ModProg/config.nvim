@@ -1,3 +1,6 @@
 [[keys]]
 modes="i"
 h="hi"
+
+[set]
+number=true

@@ -1,10 +1,16 @@
 [env]
 MODULE_NAME = "config"
+NIGHTLY = false
 
 [tasks.release]
 script = '''
 #!@duckscript
-exec --fail-on-error cargo build --release
+nightly = get_env NIGHTLY
+if ${nightly}
+    exec --fail-on-error cargo build --release -F nightly
+else
+    exec --fail-on-error cargo build --release
+end
 mkdir lua
 crate_name = get_env CARGO_MAKE_CRATE_FS_NAME
 module_name = get_env MODULE_NAME
@@ -25,13 +31,14 @@ dependencies = ["release"]
 script = '''
 #!@duckscript
 module_name = get_env MODULE_NAME
-exec nvim -u NONE --cmd "set runtimepath^=." "+lua require'${module_name}'.load_config()"
+set_env XDG_DATA_HOME ./data
+exec nvim -u NONE --cmd "set runtimepath=." "+lua require'${module_name}'.load_config()"
 '''
 
 [tasks._clean]
 script = '''
 #!@duckscript
-rm -r lua
+rm -r lua data
 '''
 
 [tasks.clean]

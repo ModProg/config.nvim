@@ -18,12 +18,9 @@ serde_yaml = "0.8.24"
 walkdir = "2.3.2"
 sha2 = "0.10.2"
 rmp-serde = "1.1.0"
+nvim-oxi = { version = "0.1.3", git="https://github.com/ModProg/nvim-oxi", branch="my_changes", features = ["test"] }
+itertools = "0.10.3"
+# nvim-oxi = { version = "0.1.3", path = "../nvim-oxi/nvim-oxi/", features = ["test"] }
 
-[dependencies.mlua]
-git = "https://github.com/ModProg/mlua/"
-branch = "derive-from_lua"
-features = ["luajit", "vendored", "module", "macros", "send", "async"]
-
-[dependencies.nvim]
-# git = "https://github.com/ModProg/nvim-rust"
-path = "../nvim-rust"
+[features]
+nightly = ["nvim-oxi/nightly"]

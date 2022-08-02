@@ -199,7 +199,9 @@ impl SetValue {
             match object_kind {
                 oxi::ObjectKind::Boolean => Ok(Self::Bool(Deserialize::deserialize(deserializer)?)),
                 oxi::ObjectKind::Float => Ok(Self::Float(Deserialize::deserialize(deserializer)?)),
-                oxi::ObjectKind::Integer => Ok(Self::Integer(Deserialize::deserialize(deserializer)?)),
+                oxi::ObjectKind::Integer => {
+                    Ok(Self::Integer(Deserialize::deserialize(deserializer)?))
+                }
                 kind => Err(Error::DeserializeError(format!(
                     "{name} should be of kind string, boolean or float not {kind:?}"
                 ))),
@@ -682,7 +684,7 @@ fn load_config(_: ()) -> Result<()> {
             let unknown: Vec<_> = unknown.iter().map(|p| p.to_string_lossy()).collect();
             api::notify(
                 &format!(
-                    "Found new local config: \n  {}\nRun :ConfigAllow to activate",
+                    "Found new local config: \n  {}\nRun :ConfigAllow to activate or :ConfigDeny to stop prompting",
                     unknown.join("\n  ")
                 ),
                 LogLevel::Info,

@@ -156,7 +156,8 @@ enum ValueOrOp {
 enum SetValue {
     Bool(bool),
     String(String),
-    Number(f64),
+    Integer(i64),
+    Float(f64),
     List(Vec<String>),
     Set(HashSet<char>),
     Map(HashMap<String, String>),
@@ -197,7 +198,8 @@ impl SetValue {
         } else {
             match object_kind {
                 oxi::ObjectKind::Boolean => Ok(Self::Bool(Deserialize::deserialize(deserializer)?)),
-                oxi::ObjectKind::Float => Ok(Self::Number(Deserialize::deserialize(deserializer)?)),
+                oxi::ObjectKind::Float => Ok(Self::Float(Deserialize::deserialize(deserializer)?)),
+                oxi::ObjectKind::Integer => Ok(Self::Integer(Deserialize::deserialize(deserializer)?)),
                 kind => Err(Error::DeserializeError(format!(
                     "{name} should be of kind string, boolean or float not {kind:?}"
                 ))),
@@ -451,6 +453,18 @@ impl Config {
                     SetValue::Set(value.iter().flat_map(|s| s.chars()).collect()),
                 ),
                 (_, value, Operation::Assign) => set_option(key, value),
+                (SetValue::Float(current), SetValue::Float(value), Operation::Append) => {
+                    set_option(key, SetValue::Float(current + value))
+                }
+                (SetValue::Float(current), SetValue::Float(value), Operation::Remove) => {
+                    set_option(key, SetValue::Float(value - current))
+                }
+                (SetValue::Integer(current), SetValue::Integer(value), Operation::Append) => {
+                    set_option(key, SetValue::Integer(current + value))
+                }
+                (SetValue::Integer(current), SetValue::Integer(value), Operation::Remove) => {
+                    set_option(key, SetValue::Integer(value - current))
+                }
                 (SetValue::String(current), SetValue::String(value), Operation::Append) => {
                     set_option(key, SetValue::String(current + &value))
                 }

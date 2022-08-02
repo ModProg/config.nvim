@@ -20,6 +20,7 @@ flags = [
 number = false
 mouse = "a"
 completeopt = ["menuone"]
+conceallevel = 1
 
 shortmess.append = "c"
 

@@ -32,7 +32,7 @@ script = '''
 #!@duckscript
 module_name = get_env MODULE_NAME
 set_env XDG_DATA_HOME ./data
-exec nvim -u NONE --cmd "set runtimepath=." "+lua require'${module_name}'.load_config()"
+exec nvim -u NONE --cmd "set runtimepath=.,./test" "+lua require'${module_name}'.load_config()"
 '''
 
 [tasks._clean]

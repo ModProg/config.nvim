@@ -1,0 +1,43 @@
+name: Main
+
+on:
+  release:
+    types: [publish]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [linux, windows, macos]
+        version: ["0.7", "0.8", nightly]
+        include:
+          - runner: ubuntu-latest
+            os: linux
+          - runner: windows-latest
+            os: windows
+          - runner: macos-latest
+            os: macos
+        runner: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+      - uses: davidB/rust-cargo-make@v1
+
+      - name: Build Release
+      - uses: actions-rs/cargo@v1
+        env:
+          VERSION: ${{ matrix.version }}
+        with:
+          command: make
+          args: package
+
+      - name: Upload Artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./release.zip
+          asset_name: ${{ matrix.os }}-${{ matrix.version }}.zip
+          asset_content_type: application/zip

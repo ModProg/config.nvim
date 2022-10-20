@@ -2,7 +2,13 @@
 
 This replaces the need to use Vimscript or Lua for parts of the configuration e.g. keybindings.
 
-## Keys
+## Installation
+
+## Confiuration
+
+User configuration are placed in `~/.config/nvim/config/*.{yaml,toml}`
+
+### Keys
 
 The configuration for keybindings are in the array `keys`.
 Using `toml` they can be defined like that:
@@ -38,7 +44,7 @@ keys:
       silent: super silent
 ```
 
-## Sets
+### Sets
 There are a multitude of possibilities to define `set` configurations.
 
 The simplest way is as a list, exspecially in yaml:

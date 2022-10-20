@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  ..
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        version: ["0.7", "0.8", nightly]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+      - uses: davidB/rust-cargo-make@v1
+
+      - name: Build Release
+      - uses: actions-rs/cargo@v1
+        env:
+          VERSION: ${{ matrix.version }}
+        with:
+          command: make
+          args: ci

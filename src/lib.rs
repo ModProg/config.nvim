@@ -11,18 +11,22 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use derive_more::Display;
+use derive_more::{Deref, Display};
 use itertools::{Either, Itertools};
 use merge::Merge;
-use nvim_oxi::{self as oxi, Error};
+use nvim_oxi::{self as oxi, api::Error};
 use oxi::{
-    api::{self, Buffer, Window},
-    object,
-    opts::{
-        CreateAutocmdOpts, CreateAutocmdOptsBuilder, OptionScope, OptionValueOpts, SetKeymapOpts,
+    api::{
+        self, create_autocmd,
+        opts::{
+            CreateAutocmdOpts, CreateAutocmdOptsBuilder, CreateCommandOpts, NotifyOpts,
+            OptionScope, OptionValueOpts, SetKeymapOpts,
+        },
+        types::{LogLevel, Mode, OptionInfos},
+        Buffer, Window,
     },
-    types::{LogLevel, Mode, OptionInfos},
-    Dictionary, Function, Object, ToObject,
+    conversion::{self, FromObject, ToObject},
+    Dictionary, Function, ObjectKind,
 };
 use serde::{Deserialize, Serialize};
 use serde_with::{flattened_maybe, serde_as, FromInto, OneOrMany};
@@ -30,14 +34,16 @@ use sha2::{Digest, Sha512};
 use smart_default::SmartDefault;
 use walkdir::WalkDir;
 
-type Result<T, E = Error> = std::result::Result<T, E>;
+type Result<T, E = oxi::Error> = std::result::Result<T, E>;
+type ApiResult<T, E = api::Error> = std::result::Result<T, E>;
+type ConvResult<T, E = conversion::Error> = std::result::Result<T, E>;
 
 macro_rules! continue_on_error {
     ($expr:expr, $err:ident, $($format:tt)*) => {
         match $expr {
             Ok(value) => value,
             Err($err) => {
-                api::notify(&format!($($format)*), LogLevel::Error, None).unwrap();
+                api::notify(&format!($($format)*), LogLevel::Error, &NotifyOpts::default()).unwrap();
                 continue;
             }
         }
@@ -53,7 +59,7 @@ macro_rules! continue_on_error {
 }
 macro_rules! log_error {
     ($($format:tt)*) => {
-        api::notify(&format!($($format)*), LogLevel::Error, None).unwrap();
+        api::notify(&format!($($format)*), LogLevel::Error, &NotifyOpts::default()).unwrap();
     };
 }
 
@@ -66,6 +72,7 @@ struct Keys {
     #[default = true]
     recursive: bool,
     command: bool,
+    lua: bool,
     silent: bool,
     unique: bool,
     expression: bool,
@@ -164,9 +171,14 @@ enum SetValue {
 }
 
 impl SetValue {
-    fn from_option(commalist: bool, flaglist: bool, name: &str, object: Object) -> Result<Self> {
+    fn from_option(
+        commalist: bool,
+        flaglist: bool,
+        name: &str,
+        object: Object,
+    ) -> ConvResult<Self> {
         let object_kind = object.kind();
-        let deserializer = object::Deserializer::new(object);
+        let deserializer = oxi::serde::Deserializer::new(object.0);
         if commalist {
             let s = String::deserialize(deserializer)?;
             let s: Vec<_> = s.split(',').map(String::from).collect();
@@ -174,21 +186,21 @@ impl SetValue {
             // Hardcode for now from: https://github.com/neovim/neovim/blob/e59bc078de624a5f3220bfd2713be3f8978c5672/runtime/lua/vim/_meta.lua#L199-L203
             if matches!(name, "fillchars" | "listchars" | "winhl") {
                 Ok(Self::Map(
-                    s.into_iter()
-                        .filter(|s|!s.is_empty())
-                        .filter_map(|entry| {
-                            entry
-                                .split_once(':')
-                                .map(|(a, b)| (a.to_owned(), b.to_owned()))
-                                .or_else(|| {
-                                    log_error!(
-                                        "{name} should only contain map entries, contained `{entry}`"
-                                    );
-                                    None
-                                })
-                        })
-                        .collect(),
-                ))
+                        s.into_iter()
+                            .filter(|s|!s.is_empty())
+                            .filter_map(|entry| {
+                                entry
+                                    .split_once(':')
+                                    .map(|(a, b)| (a.to_owned(), b.to_owned()))
+                                    .or_else(|| {
+                                        log_error!(
+                                            "{name} should only contain map entries, contained `{entry}`"
+                                        );
+                                        None
+                                    })
+                            })
+                            .collect(),
+                    ))
             } else {
                 Ok(Self::List(s))
             }
@@ -197,30 +209,42 @@ impl SetValue {
             Ok(Self::Set(s.chars().collect()))
         } else {
             match object_kind {
-                oxi::ObjectKind::Boolean => Ok(Self::Bool(Deserialize::deserialize(deserializer)?)),
-                oxi::ObjectKind::Float => Ok(Self::Float(Deserialize::deserialize(deserializer)?)),
-                oxi::ObjectKind::Integer => Ok(Self::Integer(Deserialize::deserialize(deserializer)?)),
-                kind => Err(Error::DeserializeError(format!(
-                    "{name} should be of kind string, boolean or float not {kind:?}"
-                ))),
+                ObjectKind::Boolean => Ok(Self::Bool(Deserialize::deserialize(deserializer)?)),
+                ObjectKind::Float => Ok(Self::Float(Deserialize::deserialize(deserializer)?)),
+                ObjectKind::Integer => Ok(Self::Integer(Deserialize::deserialize(deserializer)?)),
+                kind => Err(conversion::Error::FromWrongType {
+                    expected: "string, boolean or float",
+                    actual: kind.as_static(),
+                }),
             }
         }
     }
 }
 
 impl ToObject for SetValue {
-    fn to_obj(self) -> Result<Object> {
+    fn to_object(self) -> Result<oxi::Object, conversion::Error> {
         match self {
-            SetValue::List(v) => v.join(",").to_obj(),
+            SetValue::List(v) => v.join(",").to_object(),
             SetValue::Map(v) => v
                 .into_iter()
                 .map(|(k, v)| format!("{k}:{v}"))
                 .collect::<Vec<_>>()
                 .join(",")
-                .to_obj(),
-            SetValue::Set(v) => v.into_iter().collect::<String>().to_obj(),
-            v => v.serialize(object::Serializer::new()),
+                .to_object(),
+            SetValue::Set(v) => v.into_iter().collect::<String>().to_object(),
+            v => v
+                .serialize(oxi::serde::Serializer::new())
+                .map_err(Into::into),
         }
+    }
+}
+
+#[derive(Deref)]
+struct Object(oxi::Object);
+
+impl FromObject for Object {
+    fn from_object(object: oxi::Object) -> Result<Self, conversion::Error> {
+        Ok(Self(object))
     }
 }
 
@@ -282,6 +306,24 @@ impl IntoIterator for Condition {
 }
 
 #[serde_as]
+#[derive(Deserialize, Debug, Clone)]
+struct AutoCommand {
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    triggers: Vec<String>,
+    #[serde(default)]
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    cmd: Vec<String>,
+    #[serde(default)]
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    lua: Vec<String>,
+    pattern: Option<String>,
+    // #[serde(default)]
+    // event: HashMap<String, String>,
+    // #[serde(default)]
+    // silent: bool,
+}
+
+#[serde_as]
 #[derive(Debug, Deserialize, Default, Merge, Clone)]
 #[serde(default)]
 struct Config {
@@ -292,6 +334,9 @@ struct Config {
     #[merge(strategy = merge::vec::append)]
     #[serde_as(deserialize_as = "FromInto<SetsDeserializer>")]
     set: Vec<Set>,
+    #[merge(strategy = merge::vec::append)]
+    #[serde_as(deserialize_as = "OneOrMany<_>")]
+    auto_commands: Vec<AutoCommand>,
 }
 
 impl Config {
@@ -337,11 +382,12 @@ impl Config {
         ))
     }
 
-    fn apply(&self, buffer: bool) -> Result<()> {
+    fn apply(&self, buffer: bool) -> ApiResult<()> {
         for Keys {
             modes,
             recursive,
             command,
+            lua,
             mappings,
             mappings_,
             silent,
@@ -353,17 +399,23 @@ impl Config {
             for mode in modes {
                 for (lhs, rhs) in mappings.iter().chain(mappings_.iter()) {
                     let cmd;
-                    let set_keymap: &fn(Mode, &str, &str, SetKeymapOpts) -> Result<()> = &if buffer
-                    {
-                        |a, b, c, d| Buffer::current().set_keymap(a, b, c, Some(&d))
-                    } else {
-                        |a, b, c, d| api::set_keymap(a, b, c, Some(&d))
-                    };
+                    let set_keymap: &fn(Mode, &str, &str, SetKeymapOpts) -> ApiResult<()> =
+                        &if buffer {
+                            |a, b, c, d| Buffer::current().set_keymap(a, b, c, &d)
+                        } else {
+                            |a, b, c, d| api::set_keymap(a, b, c, &d)
+                        };
 
                     set_keymap(
                         *mode,
                         &(leader.clone() + lhs),
-                        if *command {
+                        if *lua {
+                            cmd = format!(
+                                "<CMD>lua {rhs}{}<CR>",
+                                if rhs.ends_with(')') { "" } else { "()" }
+                            );
+                            &cmd
+                        } else if *command {
                             cmd = format!("<CMD>{rhs}<CR>");
                             &cmd
                         } else {
@@ -393,55 +445,61 @@ impl Config {
             );
 
             let set_option: fn(name: &str, value: SetValue) -> Result<()> = match scope {
-                oxi::types::OptionScope::Buffer => {
-                    |name, value| Buffer::current().set_option(name, value)
-                }
-                oxi::types::OptionScope::Global if buffer => |name, value: SetValue| {
+                oxi::api::types::OptionScope::Buffer => |name, value| {
+                    Buffer::current()
+                        .set_option(name, value)
+                        .map_err(Into::into)
+                },
+                oxi::api::types::OptionScope::Global if buffer => |name, value: SetValue| {
                     api::set_option_value(
                         name,
                         value,
-                        Some(&OptionValueOpts::builder().scope(OptionScope::Local).build()),
+                        &OptionValueOpts::builder().scope(OptionScope::Local).build(),
                     )
+                    .map_err(Into::into)
                 },
-                oxi::types::OptionScope::Global => |name, value: SetValue| {
+                oxi::api::types::OptionScope::Global => |name, value: SetValue| {
                     api::set_option_value(
                         name,
                         value,
-                        Some(
-                            &OptionValueOpts::builder()
-                                .scope(OptionScope::Global)
-                                .build(),
-                        ),
+                        &OptionValueOpts::builder()
+                            .scope(OptionScope::Global)
+                            .build(),
                     )
+                    .map_err(Into::into)
                 },
-                oxi::types::OptionScope::Window => {
-                    |name, value| Window::current().set_option(name, value)
-                }
+                oxi::api::types::OptionScope::Window => |name, value| {
+                    Window::current()
+                        .set_option(name, value)
+                        .map_err(Into::into)
+                },
                 _ => return Err(Error::Other(format!("Unsuported Option scope: {scope:?}"))),
             };
 
-            let get_option: fn(name: &str) -> Result<Object> = match scope {
-                oxi::types::OptionScope::Buffer => |name| Buffer::current().get_option(name),
-                oxi::types::OptionScope::Global if buffer => |name| {
+            let get_option: fn(name: &str) -> ApiResult<Object> = match scope {
+                oxi::api::types::OptionScope::Buffer => |name| Buffer::current().get_option(name),
+                oxi::api::types::OptionScope::Global if buffer => |name| {
                     api::get_option_value(
                         name,
-                        Some(&OptionValueOpts::builder().scope(OptionScope::Local).build()),
+                        &OptionValueOpts::builder().scope(OptionScope::Local).build(),
                     )
                 },
-                oxi::types::OptionScope::Global => |name| {
+                oxi::api::types::OptionScope::Global => |name| {
                     api::get_option_value(
                         name,
-                        Some(
-                            &OptionValueOpts::builder()
-                                .scope(OptionScope::Global)
-                                .build(),
-                        ),
+                        &OptionValueOpts::builder()
+                            .scope(OptionScope::Global)
+                            .build(),
                     )
                 },
-                oxi::types::OptionScope::Window => {
-                    |name| -> Result<Object, Error> { Window::current().get_option(name) }
+                oxi::api::types::OptionScope::Window => {
+                    |name| -> ApiResult<Object> { Window::current().get_option(name) }
                 }
-                _ => return Err(Error::Other(format!("Unsuported Option scope: {scope:?}"))),
+                _ => {
+                    return Err(api::Error::Other(format!(
+                        "Unsuported Option scope: {scope:?}"
+                    )))
+                }
             };
 
             let key = &key;
@@ -552,7 +610,7 @@ impl Config {
                     api::notify(
                         &format!("{op} {value:?} to {current:?} of {key} is not supported"),
                         LogLevel::Error,
-                        None,
+                        &NotifyOpts::default(),
                     )?;
                     continue;
                 }
@@ -560,7 +618,28 @@ impl Config {
                 api::notify(
                     &format!("Error while {op} {value:?} to {key}: \n{err}"),
                     LogLevel::Error,
-                    None,
+                    &NotifyOpts::default(),
+                )?;
+            }
+        }
+
+        for AutoCommand {
+            triggers,
+            cmd,
+            lua,
+            pattern,
+        } in &self.auto_commands
+        {
+            for cmd in cmd.clone().into_iter().chain(
+                lua.iter()
+                    .map(|lua| format!("lua {lua}{}", if lua.ends_with(')') { "" } else { "()" })),
+            ) {
+                create_autocmd(
+                    triggers.iter().map(AsRef::as_ref),
+                    &CreateAutocmdOpts::builder()
+                        .patterns(pattern.iter().map(AsRef::as_ref))
+                        .command(cmd.clone())
+                        .build(),
                 )?;
             }
         }
@@ -647,14 +726,18 @@ fn get_config_dirs() -> Vec<PathBuf> {
 }
 
 fn load_config(_: ()) -> Result<()> {
-    let get_files = |pattern| api::get_runtime_file(pattern, true);
+    let get_files = |pattern: &'static str| {
+        // api::call_function("globpath", (rtp, pattern))
+        api::get_runtime_file(pattern, true)
+    };
 
     let mut conditional_configs: HashMap<Condition, Config> = HashMap::new();
 
     for path in get_files("config/*.yml")?
-        .chain(get_files("config/*.yaml")?)
-        .chain(get_files("config/*.json")?)
-        .chain(get_files("config/*.toml")?)
+        .into_iter()
+        .chain(get_files("config/*.yaml")?.into_iter())
+        .chain(get_files("config/*.json")?.into_iter())
+        .chain(get_files("config/*.toml")?.into_iter())
     {
         continue_on_error!(Config::load(path.as_path()), error, "{error}")
             .0
@@ -686,7 +769,7 @@ fn load_config(_: ()) -> Result<()> {
                     unknown.join("\n  ")
                 ),
                 LogLevel::Info,
-                None,
+                &NotifyOpts::default(),
             )?;
         }
         api::create_user_command(
@@ -699,7 +782,7 @@ fn load_config(_: ()) -> Result<()> {
                 }
                 let data_dir = hashes_file.parent().expect("Hashes file has a parent");
                 fs::create_dir_all(data_dir).map_err(|e| {
-                    Error::Other(format!(
+                    api::Error::Other(format!(
                         "Error while creating data dir `{}`: {e}",
                         data_dir.display()
                     ))
@@ -709,14 +792,14 @@ fn load_config(_: ()) -> Result<()> {
                     rmp_serde::to_vec(&hashes).expect("Hashes serialization is infallible"),
                 )
                 .map_err(|e| {
-                    Error::Other(format!(
+                    api::Error::Other(format!(
                         "Error while saving hashes `{}`: {e}",
                         hashes_file.display()
                     ))
                 })?;
                 Ok(())
             },
-            None,
+            &CreateCommandOpts::default(),
         )?;
     }
 
@@ -728,7 +811,7 @@ fn load_config(_: ()) -> Result<()> {
             condition.events().iter().map(AsRef::as_ref),
             &condition
                 .opts()
-                .callback(move |_| {
+                .callback(move |_| -> Result<bool> {
                     config.apply(true)?;
                     Ok(false)
                 })
@@ -740,7 +823,7 @@ fn load_config(_: ()) -> Result<()> {
 }
 
 #[oxi::module]
-fn config() -> Result<Dictionary> {
+fn config() -> Result<Dictionary, nvim_oxi::Error> {
     Ok(Dictionary::from_iter([(
         "load_config",
         Function::from_fn(load_config),

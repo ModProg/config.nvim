@@ -1,29 +1,42 @@
 [env]
-MODULE_NAME = "config"
-NIGHTLY = false
+MODULE_NAME = "${CARGO_MAKE_RUST_TARGET_OS}"
+VERSION = { value = "0.8", condition = { env_not_set = ["VERSION"] } }
 
-[tasks.release]
+[env.FROM_EXTENSION] 
+source = "${CARGO_MAKE_RUST_TARGET_OS}"
+mapping = {"linux" = "so", "macos" = "dylib", "windows" = "dll"}
+
+[env.TO_EXTENSION] 
+source = "${CARGO_MAKE_RUST_TARGET_OS}"
+default_value = "${FROM_EXTENSION}"
+mapping = {"macos" = "so"}
+
+[tasks._build]
+command = "cargo"
+args = ["build", "--release", "-F", "${VERSION}"]
+
+[tasks.build]
+dependencies = ["_build"]
+clear = true
 script = '''
 #!@duckscript
-nightly = get_env NIGHTLY
-if ${nightly}
-    exec --fail-on-error cargo build --release -F nightly
-else
-    exec --fail-on-error cargo build --release
-end
 mkdir lua
 crate_name = get_env CARGO_MAKE_CRATE_FS_NAME
 module_name = get_env MODULE_NAME
-cp target/release/lib${crate_name}.so lua/${module_name}.so
+from_ext = get_env FROM_EXTENSION
+to_ext = get_env TO_EXTENSION
+cp target/release/lib${crate_name}.${from_ext} lua/${module_name}.${to_ext}
 '''
 
 [tasks.install]
-dependencies = ["release"]
+dependencies = ["build"]
 script = '''
 #!@duckscript
-module_name = get_env MODULE_NAME
 home = get_home_dir
-cp lua/${module_name}.so ${home}/.config/nvim/lua/${module_name}.so
+module_name = get_env MODULE_NAME
+to_ext = get_env TO_EXTENSION
+mkdir ${home}/.config/nvim/lua/
+cp lua/${module_name}.${to_ext} ${home}/.config/nvim/lua/${module_name}.${to_ext}
 '''
 
 [tasks.run]
@@ -44,3 +57,19 @@ rm -r lua data
 [tasks.clean]
 dependencies = ["_clean"]
 
+[tasks.package]
+dependencies = ["build"]
+command = "zip"
+args = ["-r", "${CARGO_MAKE_CRATE_FS_NAME}-${CARGO_MAKE_RUST_TARGET_OS}-${VERSION}.zip", "lua"]
+
+[tasks.package.windows]
+dependencies = ["build"]
+command = "tar.exe"
+args = ["-cf", "${CARGO_MAKE_CRATE_FS_NAME}-${CARGO_MAKE_RUST_TARGET_OS}-${VERSION}.zip", "lua"]
+
+[tasks.ci]
+dependencies = ["test"]
+
+[tasks.test]
+command = "cargo"
+args = ["test", "-F", "${VERSION}"]

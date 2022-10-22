@@ -19,10 +19,11 @@ walkdir = "2.3.2"
 sha2 = "0.10.2"
 rmp-serde = "1.1.0"
 itertools = "0.10.3"
-nvim-oxi = { version = "0.2.2", features = ["test"] }
+# nvim-oxi = { version = "0.2.2", features = ["test"] }
+nvim-oxi = { git = "https://github.com/noib3/nvim-oxi/", features = ["test"] }
 
 [features]
-# default = ["0.8"]
+default = ["0.8"]
 nightly = ["nvim-oxi/neovim-nightly"]
 "0.7" = ["nvim-oxi/neovim-0-7"]
 "0.8" = ["nvim-oxi/neovim-0-8"]

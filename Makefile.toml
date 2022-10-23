@@ -1,6 +1,7 @@
 [env]
 MODULE_NAME = "${CARGO_MAKE_RUST_TARGET_OS}"
 VERSION = { value = "0.8", condition = { env_not_set = ["VERSION"] } }
+FEATURE_FLAGS = ["-F", "${VERSION}", "--no-default-features"]
 
 [env.FROM_EXTENSION] 
 source = "${CARGO_MAKE_RUST_TARGET_OS}"
@@ -11,9 +12,10 @@ source = "${CARGO_MAKE_RUST_TARGET_OS}"
 default_value = "${FROM_EXTENSION}"
 mapping = {"macos" = "so"}
 
+
 [tasks._build]
 command = "cargo"
-args = ["build", "--release", "-F", "${VERSION}"]
+args = ["build", "--release", "${FEATURE_FLAGS}"]
 
 [tasks.build]
 dependencies = ["_build"]
@@ -72,4 +74,4 @@ dependencies = ["test"]
 
 [tasks.test]
 command = "cargo"
-args = ["test", "-F", "${VERSION}"]
+args = ["test", "-F", "${FEATURE_FLAGS}"]

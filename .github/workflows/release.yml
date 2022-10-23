@@ -9,13 +9,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [linux, windows, macos]
+        # os: [linux, windows, macos]
+        os: [linux, macos]
         version: ["0.7", "0.8", nightly]
         include:
           - runner: ubuntu-latest
             os: linux
-          - runner: windows-latest
-            os: windows
+          # - runner: windows-latest
+          #   os: windows
           - runner: macos-latest
             os: macos
         runner: [ubuntu-latest, windows-latest, macos-latest]

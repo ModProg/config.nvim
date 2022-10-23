@@ -19,7 +19,6 @@ jobs:
           #   os: windows
           - runner: macos-latest
             os: macos
-        runner: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2

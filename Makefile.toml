@@ -62,12 +62,12 @@ dependencies = ["_clean"]
 [tasks.package]
 dependencies = ["build"]
 command = "zip"
-args = ["-r", "${CARGO_MAKE_CRATE_FS_NAME}-${CARGO_MAKE_RUST_TARGET_OS}-${VERSION}.zip", "lua"]
+args = ["-r", "release.zip", "lua"]
 
 [tasks.package.windows]
 dependencies = ["build"]
 command = "tar.exe"
-args = ["-cf", "${CARGO_MAKE_CRATE_FS_NAME}-${CARGO_MAKE_RUST_TARGET_OS}-${VERSION}.zip", "lua"]
+args = ["-cf", "release.zip", "lua"]
 
 [tasks.ci]
 dependencies = ["test"]

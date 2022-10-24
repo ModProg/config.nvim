@@ -1,0 +1,11 @@
+#!/bin/sh
+
+os=$1
+neovim_version=$2
+version=$3
+
+rm -r lua
+rm release.zip
+
+wget https://github.com/ModProg/config.nvim/releases/download/${version}/${os}-${neovim_version}.zip -O release.zip
+unzip release.zip

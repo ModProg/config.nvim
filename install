@@ -1,11 +1,28 @@
 #!/bin/sh
 
-os=$1
-neovim_version=$2
-version=$3
+crate_name=config
+module_name=$crate_name
 
-rm -r lua
-rm release.zip
+installation_type=$1
+os=$2
+neovim_version=$3
+version=$4
 
-wget https://github.com/ModProg/config.nvim/releases/download/${version}/${os}-${neovim_version}.zip -O release.zip
-unzip release.zip
+if [ $installation_type = download ]; then
+    rm -r lua
+    rm release.zip
+
+    if [ $version = "latest" ]; then
+        url = https://github.com/ModProg/config.nvim/releases/latest/download/${os}-${neovim_version}.zip
+    else
+        url = https://github.com/ModProg/config.nvim/releases/download/${version}/${os}-${neovim_version}.zip
+    fi
+
+    wget $url -O release.zip
+    unzip release.zip
+else
+    cargo build --release
+    mkdir lua
+    cp target/release/lib${crate_name}.so lua/${module_name}.so
+    cp target/release/lib${crate_name}.dylib lua/${module_name}.so
+fi;

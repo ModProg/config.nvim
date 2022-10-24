@@ -13,9 +13,9 @@ if [ $installation_type = download ]; then
     rm release.zip
 
     if [ $version = "latest" ]; then
-        url = https://github.com/ModProg/config.nvim/releases/latest/download/${os}-${neovim_version}.zip
+        url=https://github.com/ModProg/config.nvim/releases/latest/download/${os}-${neovim_version}.zip
     else
-        url = https://github.com/ModProg/config.nvim/releases/download/${version}/${os}-${neovim_version}.zip
+        url=https://github.com/ModProg/config.nvim/releases/download/${version}/${os}-${neovim_version}.zip
     fi
 
     wget $url -O release.zip

@@ -19,4 +19,4 @@ jobs:
           toolchain: stable
       - uses: arduino/setup-task@v1
 
-      - run: task ci --output group --output-group-begin "::group::{{.TASK}}" "::endgroup::"
+      - run: task ci --output group --output-group-begin "::group::{{.TASK}}" --output-group-end "::endgroup::"

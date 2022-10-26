@@ -46,13 +46,14 @@ tasks:
   package:
     desc: Builds a zip file ready for installation
     deps:
-      - build
       - '{{OS | eq "windows" | ternary "package-windows" "package-unix"}}'
   package-windows:
+    deps: [build]
     internal: true
     cmds:
       - tar.exe -cf release.zip lua
   package-unix:
+    deps: [build]
     internal: true
     cmds:
       - zip -r release.zip lua

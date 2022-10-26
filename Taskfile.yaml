@@ -36,8 +36,12 @@ tasks:
     desc: Runs tests
     cmds:
       - 'cargo test {{.FEATURE_FLAGS}}'
+  clippy:
+    desc: Runs clippy
+    cmds: 
+      - 'cargo clippy {{.FEATURE_FLAGS}}'
   ci:
-    deps: [test]
+    deps: [test, clippy]
 
   package:
     desc: Builds a zip file ready for installation

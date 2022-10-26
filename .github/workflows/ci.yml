@@ -17,11 +17,6 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
-      - uses: davidB/rust-cargo-make@v1
+      - uses: arduino/setup-task@v1
 
-      - uses: actions-rs/cargo@v1
-        env:
-          VERSION: ${{ matrix.version }}
-        with:
-          command: make
-          args: ci
+      - run: task ci --output group --output-group-begin "::group::{{.TASK}}" "::endgroup::"

@@ -65,7 +65,7 @@ tasks:
     desc: Cleans build files
     cmds:
       - cargo clean
-      - rm -r lua
+      - rm -r lua test/rtp/lua test/data
 
   install-copy:
     desc: Installs plugin in neovim by copying

@@ -1,0 +1,77 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  PACKAGE_METADATA:
+    sh: cargo metadata --no-deps --format-version 1
+  CRATE_NAME: '{{(mustFirst (mustFromJson .PACKAGE_METADATA).packages).name}}'
+  MODULE_NAME: '{{.CRATE_NAME}}'
+  DEFAULT_VERSION: '0.8'
+  PROJECT_NAME: '{{.TASKFILE_DIR | base}}'
+  INSTALL_PATH: '~/.local/share/nvim/site/pack/build/start/{{.PROJECT_NAME}}/'
+  # Executed when running `task run` remove to disable
+  ENTRY_POINT: 'lua require"{{.MODULE_NAME}}".load_config()'
+
+  VERSION: '{{.VERSION | default .DEFAULT_VERSION}}'
+  FEATURE_FLAGS: '-F {{.VERSION}} --no-default-features'
+
+  FROM_EXTENSION: '{{OS | get (dict "linux" "so" "darwin" "dylib" "windows" "dll")}}'
+  TO_EXTENSION: '{{OS | eq "darwin" | ternary "so" .FROM_EXTENSION}}'
+
+tasks:
+  build:
+    desc: Builds the plugin and places it in ./lua
+    cmds:
+      - 'cargo build --release {{.FEATURE_FLAGS}}'
+      - mkdir -p lua
+      - 'cp target/release/lib{{.CRATE_NAME}}.{{.FROM_EXTENSION}} lua/{{.MODULE_NAME}}.{{.TO_EXTENSION}}'
+  run:
+    desc: Runs the plugin in neovim
+    env:
+      XDG_DATA_HOME: ./data
+    cmds:
+      - 'nvim -u NONE --cmd "set runtimepath=.,./test" {{.ENTRY_POINT | ternary "" (list "+" .ENTRY_POINT | join "" | shellQuote)}}'
+  test:
+    desc: Runs tests
+    cmds:
+      - 'cargo test {{.FEATURE_FLAGS}}'
+  ci:
+    deps: [test]
+
+  package:
+    desc: Builds a zip file ready for installation
+    deps:
+      - build
+      - '{{OS | eq "windows" | ternary "package-windows" "package-unix"}}'
+  package-windows:
+    internal: true
+    cmds:
+      - tar.exe -cf release.zip lua
+  package-unix:
+    internal: true
+    cmds:
+      - zip -r release.zip lua
+
+  clean:
+    desc: Cleans build files
+    cmds:
+      - cargo clean
+      - rm -r lua
+
+  install-copy:
+    desc: Installs plugin in neovim by copying
+    deps: [build, uninstall]
+    cmds:
+      - 'mkdir -p {{.INSTALL_PATH}}'
+      - 'cp -r lua {{.INSTALL_PATH}}'
+  install-link:
+    desc: Installs plugin in neovim by linking (auto updates)
+    deps: [build, uninstall]
+    cmds:
+      - 'mkdir -p {{.INSTALL_PATH}}'
+      - 'ln -s {{.TASKFILE_DIR}}/lua {{.INSTALL_PATH}}'
+  uninstall:
+    desc: Removes plugin from neovim (only when installed through `task install-*`)
+    cmds:
+      - 'rm -r {{.INSTALL_PATH}}'

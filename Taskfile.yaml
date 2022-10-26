@@ -28,10 +28,13 @@ tasks:
       - 'cp target/release/lib{{.CRATE_NAME}}.{{.FROM_EXTENSION}} lua/{{.MODULE_NAME}}.{{.TO_EXTENSION}}'
   run:
     desc: Runs the plugin in neovim
+    deps: [build]
+    dir: ./test/project/
     env:
-      XDG_DATA_HOME: ./data
+      XDG_DATA_HOME: ../data
     cmds:
-      - 'nvim -u NONE --cmd "set runtimepath=.,./test" {{.ENTRY_POINT | ternary "" (list "+" .ENTRY_POINT | join "" | shellQuote)}}'
+      - cp -r ../../lua/ ../rtp/
+      - 'nvim -u NONE --cmd "set runtimepath=../rtp" {{.ENTRY_POINT | empty | ternary "" (list "+" .ENTRY_POINT | join "" | shellQuote)}}'
   test:
     desc: Runs tests
     cmds:

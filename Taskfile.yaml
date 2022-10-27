@@ -2,20 +2,43 @@
 
 version: '3'
 
+env:
+  # Uncomment to set neovim version directly
+  # NEOVIM_VERSION: 0.7
+  # Version of neovim to choose when `NEOVIM_VERSION` environment variable is
+  # not provided and recognision of system version failed
+  DEFAULT_NEOVIM_VERSION: '0.8'
+  # Uncomment to manually set crate name
+  # CRATE_NAME: crate
+  # Uncomment to manually set lua module name
+  # MODULE_NAME: module
+  # Uncomment to manually set name of plugin folder (only for local installation)
+  # PROJECT_NAME: project
+  # code to execute at start of `task run` (remove to disable)
+  ENTRY_POINT: 'lua require"config".load_config()'
+
+# These contain the computed values, for configuration use `env` section
 vars:
+  # Detects crate name
   PACKAGE_METADATA:
     sh: cargo metadata --no-deps --format-version 1
-  CRATE_NAME: '{{(mustFirst (mustFromJson .PACKAGE_METADATA).packages).name}}'
-  MODULE_NAME: '{{.CRATE_NAME}}'
-  DEFAULT_VERSION: '0.8'
-  PROJECT_NAME: '{{.TASKFILE_DIR | base}}'
+  CRATE_NAME: '{{.CRATE_NAME | default (mustFirst (mustFromJson .PACKAGE_METADATA).packages).name}}'
+  MODULE_NAME: '{{.MODULE_NAME | default .CRATE_NAME}}'
+
+  # Uses dir name for project name
+  PROJECT_NAME: '{{.PROJECT_NAME | default (.TASKFILE_DIR | base)}}'
   INSTALL_PATH: '~/.local/share/nvim/site/pack/build/start/{{.PROJECT_NAME}}/'
-  # Executed when running `task run` remove to disable
-  ENTRY_POINT: 'lua require"{{.MODULE_NAME}}".load_config()'
 
-  VERSION: '{{.VERSION | default .DEFAULT_VERSION}}'
-  FEATURE_FLAGS: '-F {{.VERSION}} --no-default-features'
+  # Detects version of installed neovim
+  SYSTEM_NEOVIM_VERSION_OUTPUT:
+    # Ignores the error https://github.com/go-task/task/issues/457
+    sh: nvim --version || true
+  SYSTEM_NEOVIM_VERSION: '{{.SYSTEM_NEOVIM_VERSION_OUTPUT | regexFind "\\d+\\.\\d+"}}'
 
+  NEOVIM_VERSION: '{{coalesce .NEOVIM_VERSION .SYSTEM_NEOVIM_VERSION .DEFAULT_NEOVIM_VERSION}}'
+  FEATURE_FLAGS: '-F {{.NEOVIM_VERSION}} --no-default-features'
+
+  # On MacOS rust outputs a `.dylib` but lua expects a `.so`
   FROM_EXTENSION: '{{OS | get (dict "linux" "so" "darwin" "dylib" "windows" "dll")}}'
   TO_EXTENSION: '{{OS | eq "darwin" | ternary "so" .FROM_EXTENSION}}'
 
@@ -37,6 +60,7 @@ tasks:
       - 'nvim -u NONE --cmd "set runtimepath=../rtp" {{.ENTRY_POINT | empty | ternary "" (list "+" .ENTRY_POINT | join "" | shellQuote)}}'
   test:
     desc: Runs tests
+    deps: [build]
     cmds:
       - 'cargo test {{.FEATURE_FLAGS}}'
   clippy:

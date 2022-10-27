@@ -9,7 +9,7 @@ jobs:
       matrix:
         # os: [ubuntu-latest, windows-latest, macos-latest]
         os: [ubuntu-latest, macos-latest]
-        version: ["0.7", "0.8", nightly]
+        neovim_version: ['0.7', '0.8', nightly]
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -21,4 +21,7 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: task ci --output group --output-group-begin "::group::{{.TASK}}" --output-group-end "::endgroup::"
+      - name: Main
+        env:
+          NEOVIM_VERSION: ${{ matrix.neovim_version }}
+        run: task ci --output group --output-group-begin "::group::{{.TASK}}" --output-group-end "::endgroup::"

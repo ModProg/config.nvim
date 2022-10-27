@@ -11,7 +11,7 @@ jobs:
       matrix:
         # os: [linux, windows, macos]
         os: [linux, macos]
-        version: ["0.7", "0.8", nightly]
+        neovim_version: ["0.7", "0.8", nightly]
         include:
           - runner: ubuntu-latest
             os: linux
@@ -31,7 +31,7 @@ jobs:
 
       - name: Build Release
         env:
-          VERSION: ${{ matrix.version }}
+          NEOVIM_VERSION: ${{ matrix.neovim_version }}
         run: task package --output group --output-group-begin "::group::{{.TASK}}" --output-group-end "::endgroup::"
 
       - name: Upload Artifact
@@ -41,5 +41,5 @@ jobs:
         with:
           upload_url: ${{ github.event.release.upload_url }}
           asset_path: ./release.zip
-          asset_name: ${{ matrix.os }}-${{ matrix.version }}.zip
+          asset_name: ${{ matrix.os }}-${{ matrix.neovim_version }}.zip
           asset_content_type: application/zip

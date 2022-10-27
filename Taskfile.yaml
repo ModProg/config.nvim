@@ -105,5 +105,6 @@ tasks:
       - 'ln -s {{.TASKFILE_DIR}}/lua {{.INSTALL_PATH}}'
   uninstall:
     desc: Removes plugin from neovim (only when installed through `task install-*`)
+    ignore_error: true
     cmds:
       - 'rm -r {{.INSTALL_PATH}}'

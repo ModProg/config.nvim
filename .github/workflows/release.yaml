@@ -10,7 +10,7 @@ jobs:
       fail-fast: false
       matrix:
         # os: [linux, windows, macos]
-        os: [linux, macos]
+        # os: [linux, macos]
         neovim_version: ["0.7", "0.8", nightly]
         include:
           - runner: ubuntu-latest

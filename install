@@ -4,11 +4,11 @@ crate_name=config
 module_name=$crate_name
 
 installation_type=$1
-os=$2
-neovim_version=$3
-version=$4
 
 if [ $installation_type = download ]; then
+    os=$2
+    neovim_version=$3
+    version=$4
     rm -r lua
     rm release.zip
 
@@ -21,7 +21,8 @@ if [ $installation_type = download ]; then
     wget $url -O release.zip
     unzip release.zip
 else
-    cargo build --release
+    neovim_version=$2
+    cargo build --release -F $neovim_version --no-default-features
     mkdir lua
     cp target/release/lib${crate_name}.so lua/${module_name}.so
     cp target/release/lib${crate_name}.dylib lua/${module_name}.so

@@ -184,6 +184,7 @@ impl ToObject for SetValue {
         }
     }
 }
+
 impl Set {
     pub fn apply(&self, buffer: bool) -> ApiResult {
         let Set(key, op, value) = self;
@@ -199,72 +200,13 @@ impl Set {
             error,
             "Invalid option {key}: {error}"
         );
-        let set_option: fn(name: &str, value: SetValue) -> Result<()> = match scope {
-            types::OptionScope::Buffer => |name, value| {
-                Buffer::current()
-                    .set_option(name, value)
-                    .map_err(Into::into)
-            },
-            types::OptionScope::Global if buffer => |name, value: SetValue| {
-                api::set_option_value(
-                    name,
-                    value,
-                    &OptionValueOpts::builder().scope(OptionScope::Local).build(),
-                )
-                .map_err(Into::into)
-            },
-            types::OptionScope::Global => |name, value: SetValue| {
-                api::set_option_value(
-                    name,
-                    value,
-                    &OptionValueOpts::builder()
-                        .scope(OptionScope::Global)
-                        .build(),
-                )
-                .map_err(Into::into)
-            },
-            types::OptionScope::Window => |name, value| {
-                Window::current()
-                    .set_option(name, value)
-                    .map_err(Into::into)
-            },
-            _ => {
-                return Err(ApiError::Other(format!(
-                    "Unsuported Option scope: {scope:?}"
-                )))
-            }
-        };
+        let set_option = set_option(scope, buffer)?;
 
-        let get_option: fn(name: &str) -> ApiResult<Object> = match scope {
-            types::OptionScope::Buffer => |name| Buffer::current().get_option(name),
-            types::OptionScope::Global if buffer => |name| {
-                api::get_option_value(
-                    name,
-                    &OptionValueOpts::builder().scope(OptionScope::Local).build(),
-                )
-            },
-            types::OptionScope::Global => |name| {
-                api::get_option_value(
-                    name,
-                    &OptionValueOpts::builder()
-                        .scope(OptionScope::Global)
-                        .build(),
-                )
-            },
-            types::OptionScope::Window => {
-                |name| -> ApiResult<Object> { Window::current().get_option(name) }
-            }
-            _ => {
-                return Err(api::Error::Other(format!(
-                    "Unsuported Option scope: {scope:?}"
-                )))
-            }
-        };
+        let get_option = get_option(scope, buffer)?;
 
-        let key = &key;
         let current = SetValue::from_option(commalist, flaglist, &name, get_option(key)?)?;
 
-        if let Err(err) = match (current, value.clone(), op) {
+        match (current, value.clone(), op) {
             (SetValue::Set(_), SetValue::List(value), Operation::Assign) => set_option(
                 key,
                 SetValue::Set(value.iter().flat_map(|s| s.chars()).collect()),
@@ -366,20 +308,84 @@ impl Set {
                 set_option(key, SetValue::Map(current))
             }
             (current, value, op) => {
-                api::notify(
-                    &format!("{op} {value:?} to {current:?} of {key} is not supported"),
-                    LogLevel::Error,
-                    &NotifyOpts::default(),
-                )?;
+                log_error!("{op} {value:?} to {current:?} of {key} is not supported");
                 return Ok(());
             }
-        } {
-            api::notify(
-                &format!("Error while {op} {value:?} to {key}: \n{err}"),
-                LogLevel::Error,
-                &NotifyOpts::default(),
-            )?;
         }
-        Ok(())
+        .or_else(|err| {
+            log_error!("Error while {op} {value:?} to {key}: \n{err}");
+            Ok(())
+        })
     }
+}
+
+fn set_option(
+    scope: types::OptionScope,
+    buffer: bool,
+) -> ApiResult<fn(name: &str, value: SetValue) -> Result<()>> {
+    Ok(match scope {
+        types::OptionScope::Buffer if !buffer => |name, value| {
+            api::set_option(name, value.clone())?;
+            Buffer::current()
+                .set_option(name, value)
+                .map_err(Into::into)
+        },
+        types::OptionScope::Buffer => |name, value| {
+            Buffer::current()
+                .set_option(name, value)
+                .map_err(Into::into)
+        },
+        types::OptionScope::Global if buffer => |name, value: SetValue| {
+            api::set_option_value(
+                name,
+                value,
+                &OptionValueOpts::builder().scope(OptionScope::Local).build(),
+            )
+            .map_err(Into::into)
+        },
+        types::OptionScope::Global => {
+            |name, value: SetValue| api::set_option(name, value).map_err(Into::into)
+        }
+        types::OptionScope::Window => |name, value| {
+            Window::current()
+                .set_option(name, value)
+                .map_err(Into::into)
+        },
+        _ => {
+            return Err(ApiError::Other(format!(
+                "Unsuported Option scope: {scope:?}"
+            )))
+        }
+    })
+}
+
+fn get_option(
+    scope: types::OptionScope,
+    buffer: bool,
+) -> ApiResult<fn(name: &str) -> ApiResult<Object>> {
+    Ok(match scope {
+        types::OptionScope::Buffer => |name| Buffer::current().get_option(name),
+        types::OptionScope::Global if buffer => |name| {
+            api::get_option_value(
+                name,
+                &OptionValueOpts::builder().scope(OptionScope::Local).build(),
+            )
+        },
+        types::OptionScope::Global => |name| {
+            api::get_option_value(
+                name,
+                &OptionValueOpts::builder()
+                    .scope(OptionScope::Global)
+                    .build(),
+            )
+        },
+        types::OptionScope::Window => {
+            |name| -> ApiResult<Object> { Window::current().get_option(name) }
+        }
+        _ => {
+            return Err(api::Error::Other(format!(
+                "Unsuported Option scope: {scope:?}"
+            )))
+        }
+    })
 }

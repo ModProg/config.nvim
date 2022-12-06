@@ -2,672 +2,38 @@
 #![allow(
     clippy::struct_excessive_bools,
     clippy::too_many_lines,
-    clippy::unnecessary_wraps
+    clippy::unnecessary_wraps,
+    clippy::wildcard_imports,
+    clippy::module_name_repetitions
 )]
 #![warn(clippy::unwrap_used)]
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     env, fs,
     path::{Path, PathBuf},
 };
 
-use derive_more::{Deref, Display};
 use itertools::{Either, Itertools};
-use merge::Merge;
-use nvim_oxi::{self as oxi, api::Error};
+pub use nvim_oxi as oxi;
+pub use oxi::{api, api::Error as ApiError, Error};
 use oxi::{
-    api::{
-        self, create_autocmd,
-        opts::{
-            CreateAutocmdOpts, CreateAutocmdOptsBuilder, CreateCommandOpts, NotifyOpts,
-            OptionScope, OptionValueOpts, SetKeymapOpts,
-        },
-        types::{LogLevel, Mode, OptionInfos},
-        Buffer, Window,
-    },
-    conversion::{self, FromObject, ToObject},
-    Dictionary, Function, ObjectKind,
+    api::{opts::*, types::LogLevel},
+    conversion, Dictionary, Function,
 };
-use serde::{Deserialize, Serialize};
-use serde_with::{flattened_maybe, serde_as, FromInto, OneOrMany};
-use sha2::{Digest, Sha512};
-use smart_default::SmartDefault;
 use walkdir::WalkDir;
 
-type Result<T, E = oxi::Error> = std::result::Result<T, E>;
-type ApiResult<T, E = api::Error> = std::result::Result<T, E>;
-type ConvResult<T, E = conversion::Error> = std::result::Result<T, E>;
+#[macro_use]
+mod macros;
 
-macro_rules! continue_on_error {
-    ($expr:expr, $err:ident, $($format:tt)*) => {
-        match $expr {
-            Ok(value) => value,
-            Err($err) => {
-                api::notify(&format!($($format)*), LogLevel::Error, &NotifyOpts::default()).unwrap();
-                continue;
-            }
-        }
-    };
-    ($expr:expr, $($format:tt)*) => {
-        if let Ok(value) = $expr {
-             value
-        } else {
-            api::notify(&format!($($format)*), LogLevel::Error, None).unwrap();
-            continue;
-        }
-    };
-}
-macro_rules! log_error {
-    ($($format:tt)*) => {
-        api::notify(&format!($($format)*), LogLevel::Error, &NotifyOpts::default()).unwrap();
-    };
-}
+mod config;
+use config::*;
 
-#[serde_as]
-#[derive(Debug, Deserialize, SmartDefault, Clone)]
-#[serde(default)]
-struct Keys {
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    modes: Vec<Mode>,
-    #[default = true]
-    recursive: bool,
-    command: bool,
-    lua: bool,
-    silent: bool,
-    unique: bool,
-    expression: bool,
-    leader: String,
-    #[serde(flatten)]
-    mappings_: HashMap<String, String>,
-    mappings: HashMap<String, String>,
-}
-flattened_maybe!(deserialize_mappings, "mappings");
+mod hashes;
+use hashes::*;
 
-#[derive(Debug, Deserialize, Clone)]
-struct Set(String, Operation, SetValue);
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum SetDeserializer {
-    Flag(String),
-    Assignment(HashMap<String, ValueOrOp>),
-}
-
-impl From<SetDeserializer> for Vec<Set> {
-    fn from(d: SetDeserializer) -> Self {
-        match d {
-            SetDeserializer::Flag(name) => {
-                vec![if let Some(name) = name.strip_prefix("no") {
-                    Set(name.to_string(), Operation::Assign, SetValue::Bool(false))
-                } else {
-                    Set(name.to_string(), Operation::Assign, SetValue::Bool(true))
-                }]
-            }
-            SetDeserializer::Assignment(map) => map
-                .into_iter()
-                .flat_map(|(name, value)| match value {
-                    ValueOrOp::Operation(map) => map
-                        .into_iter()
-                        .map(|(operation, value)| Set(name.clone(), operation, value))
-                        .collect(),
-                    ValueOrOp::Value(value) => vec![Set(name, Operation::Assign, value)],
-                })
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-enum SetsDeserializer {
-    List(Vec<SetDeserializer>),
-    Map {
-        #[serde(default)]
-        flags: Vec<SetDeserializer>,
-        #[serde(default, flatten)]
-        map: HashMap<String, ValueOrOp>,
-    },
-}
-
-impl From<SetsDeserializer> for Vec<Set> {
-    fn from(d: SetsDeserializer) -> Self {
-        match d {
-            SetsDeserializer::List(list) => list.into_iter().flat_map(Vec::from).collect(),
-            SetsDeserializer::Map { flags, map } => flags
-                .into_iter()
-                .flat_map(Vec::from)
-                .chain(map.into_iter().flat_map(|(name, value)| {
-                    match value {
-                        ValueOrOp::Operation(map) => map
-                            .into_iter()
-                            .map(|(operation, value)| Set(name.clone(), operation, value))
-                            .collect(),
-                        ValueOrOp::Value(value) => vec![Set(name, Operation::Assign, value)],
-                    }
-                }))
-                .collect(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-#[serde(deny_unknown_fields)]
-enum ValueOrOp {
-    Operation(HashMap<Operation, SetValue>),
-    Value(SetValue),
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-#[serde(untagged)]
-enum SetValue {
-    Bool(bool),
-    String(String),
-    Integer(i64),
-    Float(f64),
-    List(Vec<String>),
-    Set(HashSet<char>),
-    Map(HashMap<String, String>),
-}
-
-impl SetValue {
-    fn from_option(
-        commalist: bool,
-        flaglist: bool,
-        name: &str,
-        object: Object,
-    ) -> ConvResult<Self> {
-        let object_kind = object.kind();
-        let deserializer = oxi::serde::Deserializer::new(object.0);
-        if commalist {
-            let s = String::deserialize(deserializer)?;
-            let s: Vec<_> = s.split(',').map(String::from).collect();
-            // TODO https://github.com/neovim/neovim/issues/19574
-            // Hardcode for now from: https://github.com/neovim/neovim/blob/e59bc078de624a5f3220bfd2713be3f8978c5672/runtime/lua/vim/_meta.lua#L199-L203
-            if matches!(name, "fillchars" | "listchars" | "winhl") {
-                Ok(Self::Map(
-                        s.into_iter()
-                            .filter(|s|!s.is_empty())
-                            .filter_map(|entry| {
-                                entry
-                                    .split_once(':')
-                                    .map(|(a, b)| (a.to_owned(), b.to_owned()))
-                                    .or_else(|| {
-                                        log_error!(
-                                            "{name} should only contain map entries, contained `{entry}`"
-                                        );
-                                        None
-                                    })
-                            })
-                            .collect(),
-                    ))
-            } else {
-                Ok(Self::List(s))
-            }
-        } else if flaglist {
-            let s = String::deserialize(deserializer)?;
-            Ok(Self::Set(s.chars().collect()))
-        } else {
-            match object_kind {
-                ObjectKind::Boolean => Ok(Self::Bool(Deserialize::deserialize(deserializer)?)),
-                ObjectKind::Float => Ok(Self::Float(Deserialize::deserialize(deserializer)?)),
-                ObjectKind::Integer => Ok(Self::Integer(Deserialize::deserialize(deserializer)?)),
-                kind => Err(conversion::Error::FromWrongType {
-                    expected: "string, boolean or float",
-                    actual: kind.as_static(),
-                }),
-            }
-        }
-    }
-}
-
-impl ToObject for SetValue {
-    fn to_object(self) -> Result<oxi::Object, conversion::Error> {
-        match self {
-            SetValue::List(v) => v.join(",").to_object(),
-            SetValue::Map(v) => v
-                .into_iter()
-                .map(|(k, v)| format!("{k}:{v}"))
-                .collect::<Vec<_>>()
-                .join(",")
-                .to_object(),
-            SetValue::Set(v) => v.into_iter().collect::<String>().to_object(),
-            v => v
-                .serialize(oxi::serde::Serializer::new())
-                .map_err(Into::into),
-        }
-    }
-}
-
-#[derive(Deref)]
-struct Object(oxi::Object);
-
-impl FromObject for Object {
-    fn from_object(object: oxi::Object) -> Result<Self, conversion::Error> {
-        Ok(Self(object))
-    }
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq, Hash, Display, Clone, Copy)]
-enum Operation {
-    #[serde(alias = "+", alias = "append")]
-    #[display(fmt = "appending")]
-    Append,
-    #[serde(alias = "^", alias = "prepend")]
-    #[display(fmt = "prepending")]
-    Prepend,
-    #[serde(alias = "-", alias = "remove")]
-    #[display(fmt = "remove")]
-    Remove,
-    #[serde(alias = "value", alias = "=", alias = "assign")]
-    #[display(fmt = "assigning")]
-    Assign,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Default, PartialEq, Hash, Eq, Clone)]
-#[serde(default)]
-struct Condition {
-    #[serde(default)]
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    filetype: Vec<String>,
-}
-
-impl Condition {
-    fn events(&self) -> Vec<String> {
-        let mut ret = Vec::new();
-        if !self.filetype.is_empty() {
-            ret.push("FileType".to_string());
-        }
-        ret
-    }
-    fn opts(&self) -> CreateAutocmdOptsBuilder {
-        CreateAutocmdOpts::builder()
-            // .group(StrI64::String(String::from("Config")))
-            .patterns(self.filetype.iter().map(AsRef::as_ref))
-            .clone()
-    }
-}
-
-impl IntoIterator for Condition {
-    type Item = Condition;
-
-    type IntoIter = <Vec<Condition> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.filetype
-            .into_iter()
-            .map(|filetype| Condition {
-                filetype: vec![filetype],
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
-}
-
-#[serde_as]
-#[derive(Deserialize, Debug, Clone)]
-struct AutoCommand {
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    triggers: Vec<String>,
-    #[serde(default)]
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    cmd: Vec<String>,
-    #[serde(default)]
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    lua: Vec<String>,
-    pattern: Option<String>,
-    // #[serde(default)]
-    // event: HashMap<String, String>,
-    // #[serde(default)]
-    // silent: bool,
-}
-
-#[serde_as]
-#[derive(Debug, Deserialize, Default, Merge, Clone)]
-#[serde(default)]
-struct Config {
-    #[merge(skip)]
-    conditions: Vec<Condition>,
-    #[merge(strategy = merge::vec::append)]
-    keys: Vec<Keys>,
-    #[merge(strategy = merge::vec::append)]
-    #[serde_as(deserialize_as = "FromInto<SetsDeserializer>")]
-    set: Vec<Set>,
-    #[merge(strategy = merge::vec::append)]
-    #[serde_as(deserialize_as = "OneOrMany<_>")]
-    auto_commands: Vec<AutoCommand>,
-}
-
-impl Config {
-    fn merge_into_hashmap(self, hash_map: &mut HashMap<Condition, Self>) {
-        let mut conditions = self
-            .conditions
-            .clone()
-            .into_iter()
-            .flat_map(IntoIterator::into_iter)
-            .peekable();
-        if conditions.peek().is_none() {
-            if let Some(config) = hash_map.get_mut(&Condition::default()) {
-                config.merge(self);
-            } else {
-                hash_map.insert(Condition::default(), self);
-            }
-        } else {
-            for condition in conditions {
-                if let Some(config) = hash_map.get_mut(&condition) {
-                    config.merge(self.clone());
-                } else {
-                    hash_map.insert(condition, self.clone());
-                }
-            }
-        }
-    }
-
-    fn load(path: &Path) -> Result<(Self, String), String> {
-        let ext = path
-            .extension()
-            .expect("files matching glob have extension");
-        let file = fs::read_to_string(&path)
-            .map_err(|error| format!("error while reading {}: {error}", path.display()))?;
-
-        Ok((
-            match ext.to_string_lossy().to_ascii_lowercase().as_str() {
-                "json" | "yml" | "yaml" => serde_yaml::from_str(&file).map_err(|e| e.to_string()),
-                "toml" => toml::from_str(&file).map_err(|e| e.to_string()),
-                _ => unreachable!("files matching glob are handled"),
-            }
-            .map_err(|error| format!("error while parsing {}: {error}", path.display()))?,
-            file,
-        ))
-    }
-
-    fn apply(&self, buffer: bool) -> ApiResult<()> {
-        for Keys {
-            modes,
-            recursive,
-            command,
-            lua,
-            mappings,
-            mappings_,
-            silent,
-            unique,
-            expression,
-            leader,
-        } in &self.keys
-        {
-            for mode in modes {
-                for (lhs, rhs) in mappings.iter().chain(mappings_.iter()) {
-                    let cmd;
-                    let set_keymap: &fn(Mode, &str, &str, SetKeymapOpts) -> ApiResult<()> =
-                        &if buffer {
-                            |a, b, c, d| Buffer::current().set_keymap(a, b, c, &d)
-                        } else {
-                            |a, b, c, d| api::set_keymap(a, b, c, &d)
-                        };
-
-                    set_keymap(
-                        *mode,
-                        &(leader.clone() + lhs),
-                        if *lua {
-                            cmd = format!(
-                                "<CMD>lua {rhs}{}<CR>",
-                                if rhs.ends_with(')') { "" } else { "()" }
-                            );
-                            &cmd
-                        } else if *command {
-                            cmd = format!("<CMD>{rhs}<CR>");
-                            &cmd
-                        } else {
-                            rhs
-                        },
-                        SetKeymapOpts::builder()
-                            .noremap(!recursive)
-                            .silent(*silent)
-                            .unique(*unique)
-                            .expr(*expression)
-                            .build(),
-                    )?;
-                }
-            }
-        }
-        for Set(key, op, value) in &self.set {
-            let OptionInfos {
-                commalist,
-                flaglist,
-                name,
-                scope,
-                ..
-            } = continue_on_error!(
-                api::get_option_info(key),
-                error,
-                "Invalid option {key}: {error}"
-            );
-
-            let set_option: fn(name: &str, value: SetValue) -> Result<()> = match scope {
-                oxi::api::types::OptionScope::Buffer => |name, value| {
-                    Buffer::current()
-                        .set_option(name, value)
-                        .map_err(Into::into)
-                },
-                oxi::api::types::OptionScope::Global if buffer => |name, value: SetValue| {
-                    api::set_option_value(
-                        name,
-                        value,
-                        &OptionValueOpts::builder().scope(OptionScope::Local).build(),
-                    )
-                    .map_err(Into::into)
-                },
-                oxi::api::types::OptionScope::Global => |name, value: SetValue| {
-                    api::set_option_value(
-                        name,
-                        value,
-                        &OptionValueOpts::builder()
-                            .scope(OptionScope::Global)
-                            .build(),
-                    )
-                    .map_err(Into::into)
-                },
-                oxi::api::types::OptionScope::Window => |name, value| {
-                    Window::current()
-                        .set_option(name, value)
-                        .map_err(Into::into)
-                },
-                _ => return Err(Error::Other(format!("Unsuported Option scope: {scope:?}"))),
-            };
-
-            let get_option: fn(name: &str) -> ApiResult<Object> = match scope {
-                oxi::api::types::OptionScope::Buffer => |name| Buffer::current().get_option(name),
-                oxi::api::types::OptionScope::Global if buffer => |name| {
-                    api::get_option_value(
-                        name,
-                        &OptionValueOpts::builder().scope(OptionScope::Local).build(),
-                    )
-                },
-                oxi::api::types::OptionScope::Global => |name| {
-                    api::get_option_value(
-                        name,
-                        &OptionValueOpts::builder()
-                            .scope(OptionScope::Global)
-                            .build(),
-                    )
-                },
-                oxi::api::types::OptionScope::Window => {
-                    |name| -> ApiResult<Object> { Window::current().get_option(name) }
-                }
-                _ => {
-                    return Err(api::Error::Other(format!(
-                        "Unsuported Option scope: {scope:?}"
-                    )))
-                }
-            };
-
-            let key = &key;
-            let current = SetValue::from_option(commalist, flaglist, &name, get_option(key)?)?;
-
-            if let Err(err) = match (current, value.clone(), op) {
-                (SetValue::Set(_), SetValue::List(value), Operation::Assign) => set_option(
-                    key,
-                    SetValue::Set(value.iter().flat_map(|s| s.chars()).collect()),
-                ),
-                (_, value, Operation::Assign) => set_option(key, value),
-                (SetValue::Float(current), SetValue::Float(value), Operation::Append) => {
-                    set_option(key, SetValue::Float(current + value))
-                }
-                (SetValue::Float(current), SetValue::Float(value), Operation::Remove) => {
-                    set_option(key, SetValue::Float(value - current))
-                }
-                (SetValue::Integer(current), SetValue::Integer(value), Operation::Append) => {
-                    set_option(key, SetValue::Integer(current + value))
-                }
-                (SetValue::Integer(current), SetValue::Integer(value), Operation::Remove) => {
-                    set_option(key, SetValue::Integer(value - current))
-                }
-                (SetValue::String(current), SetValue::String(value), Operation::Append) => {
-                    set_option(key, SetValue::String(current + &value))
-                }
-                (SetValue::String(current), SetValue::String(value), Operation::Prepend) => {
-                    set_option(key, SetValue::String(value + &current))
-                }
-                (SetValue::String(current), SetValue::String(value), Operation::Remove) => {
-                    set_option(key, SetValue::String(current.replacen(&value, "", 1)))
-                }
-                (SetValue::List(mut current), SetValue::List(mut value), Operation::Append) => {
-                    current.append(&mut value);
-                    set_option(key, SetValue::List(current))
-                }
-                (SetValue::List(mut current), SetValue::List(mut value), Operation::Prepend) => {
-                    value.append(&mut current);
-                    set_option(key, SetValue::List(current))
-                }
-                (SetValue::List(mut current), SetValue::List(values), Operation::Remove) => {
-                    for value in values {
-                        if let Some(index) = current.iter().position(|v| v == &value) {
-                            current.remove(index);
-                        }
-                    }
-                    set_option(key, SetValue::List(current))
-                }
-                (SetValue::List(mut current), SetValue::String(value), Operation::Append) => {
-                    current.push(value);
-                    set_option(key, SetValue::List(current))
-                }
-                (SetValue::List(mut current), SetValue::String(value), Operation::Prepend) => {
-                    current.insert(0, value);
-                    set_option(key, SetValue::List(current))
-                }
-                (SetValue::List(mut current), SetValue::String(value), Operation::Remove) => {
-                    if let Some(index) = current.iter().position(|v| v == &value) {
-                        current.remove(index);
-                    }
-                    set_option(key, SetValue::List(current))
-                }
-                (
-                    SetValue::Set(mut current),
-                    SetValue::String(value),
-                    Operation::Append | Operation::Prepend,
-                ) => {
-                    current.extend(value.chars());
-                    set_option(key, SetValue::Set(current))
-                }
-                (SetValue::Set(mut current), SetValue::String(value), Operation::Remove) => {
-                    current.retain(|&v| !value.contains(v));
-                    set_option(key, SetValue::Set(current))
-                }
-                (
-                    SetValue::Set(mut current),
-                    SetValue::List(value),
-                    Operation::Append | Operation::Prepend,
-                ) => {
-                    current.extend(value.iter().flat_map(|s| s.chars()));
-                    set_option(key, SetValue::Set(current))
-                }
-                (SetValue::Set(mut current), SetValue::List(values), Operation::Remove) => {
-                    for value in values {
-                        current.retain(|&v| !value.contains(v));
-                    }
-                    set_option(key, SetValue::Set(current))
-                }
-                (
-                    SetValue::Map(mut current),
-                    SetValue::Map(value),
-                    Operation::Append | Operation::Prepend,
-                ) => {
-                    current.extend(value.into_iter());
-                    set_option(key, SetValue::Map(current))
-                }
-                (SetValue::Map(mut current), SetValue::List(values), Operation::Remove) => {
-                    for value in values {
-                        current.remove(&value);
-                    }
-                    set_option(key, SetValue::Map(current))
-                }
-                (SetValue::Map(mut current), SetValue::String(value), Operation::Remove) => {
-                    current.remove(&value);
-                    set_option(key, SetValue::Map(current))
-                }
-                (current, value, op) => {
-                    api::notify(
-                        &format!("{op} {value:?} to {current:?} of {key} is not supported"),
-                        LogLevel::Error,
-                        &NotifyOpts::default(),
-                    )?;
-                    continue;
-                }
-            } {
-                api::notify(
-                    &format!("Error while {op} {value:?} to {key}: \n{err}"),
-                    LogLevel::Error,
-                    &NotifyOpts::default(),
-                )?;
-            }
-        }
-
-        for AutoCommand {
-            triggers,
-            cmd,
-            lua,
-            pattern,
-        } in &self.auto_commands
-        {
-            for cmd in cmd.clone().into_iter().chain(
-                lua.iter()
-                    .map(|lua| format!("lua {lua}{}", if lua.ends_with(')') { "" } else { "()" })),
-            ) {
-                create_autocmd(
-                    triggers.iter().map(AsRef::as_ref),
-                    &CreateAutocmdOpts::builder()
-                        .patterns(pattern.iter().map(AsRef::as_ref))
-                        .command(cmd.clone())
-                        .build(),
-                )?;
-            }
-        }
-        Ok(())
-    }
-}
-
-#[derive(Deserialize, Serialize, Debug, Default, Clone)]
-struct Hashes(HashMap<PathBuf, Vec<u8>>);
-impl Hashes {
-    fn is_hashed(&self, path: &Path, config: &str) -> bool {
-        if let Some(hash) = self.0.get(path) {
-            let mut hasher = Sha512::new();
-            hasher.update(config);
-            let result = hasher.finalize();
-            hash == result.as_slice()
-        } else {
-            false
-        }
-    }
-    fn add_hash(&mut self, path: PathBuf, config: &str) {
-        self.0.insert(path, {
-            let mut hasher = Sha512::new();
-            hasher.update(config);
-            hasher.finalize().to_vec()
-        });
-    }
-}
+type Result<T = (), E = oxi::Error> = std::result::Result<T, E>;
+type ApiResult<T = ()> = Result<T, ApiError>;
+type ConvResult<T = ()> = Result<T, conversion::Error>;
 
 fn config_files(path: &Path) -> impl Iterator<Item = (PathBuf, String, Config)> {
     WalkDir::new(path)
@@ -688,19 +54,6 @@ fn config_files(path: &Path) -> impl Iterator<Item = (PathBuf, String, Config)> 
             },
             _ => None,
         })
-}
-
-fn unhashed_files(
-    hashes: &Hashes,
-    files: impl IntoIterator<Item = (PathBuf, String, Config)>,
-) -> (Vec<PathBuf>, Vec<Config>) {
-    files.into_iter().partition_map(|(path, string, config)| {
-        if hashes.is_hashed(&path, &string) {
-            Either::Right(config)
-        } else {
-            Either::Left(path)
-        }
-    })
 }
 
 fn get_config_dirs() -> Vec<PathBuf> {
@@ -744,19 +97,13 @@ fn load_config(_: ()) -> Result<()> {
             .merge_into_hashmap(&mut conditional_configs);
     }
 
-    let stdpath: String =
-        api::call_function("stdpath", ("data",)).expect("There is a stdpath for data");
-    let hashes_file = PathBuf::from(stdpath).join("config/hashes");
-
-    let mut hashes =
-        || -> Option<Hashes> { rmp_serde::from_slice(&fs::read(&hashes_file).ok()?).ok()? }()
-            .unwrap_or_default();
+    let mut hashes = Hashes::load().unwrap_or_default();
 
     let config_files: Vec<_> = get_config_dirs()
         .iter()
         .flat_map(|path| config_files(path))
         .collect();
-    let (unknown, known) = unhashed_files(&hashes, config_files);
+    let (unknown, known) = hashes.unhashed(config_files);
     for config in known {
         config.merge_into_hashmap(&mut conditional_configs);
     }
@@ -765,7 +112,8 @@ fn load_config(_: ()) -> Result<()> {
             let unknown: Vec<_> = unknown.iter().map(|p| p.to_string_lossy()).collect();
             api::notify(
                 &format!(
-                    "Found new local config: \n  {}\nRun :ConfigAllow to activate",
+                    "Found new local config{}: \n  {}\nRun :ConfigAllow to activate",
+                    (unknown.len() > 1).then_some("s").unwrap_or_default(),
                     unknown.join("\n  ")
                 ),
                 LogLevel::Info,
@@ -780,23 +128,7 @@ fn load_config(_: ()) -> Result<()> {
                     config.apply(false)?;
                     hashes.add_hash(file.clone(), &source);
                 }
-                let data_dir = hashes_file.parent().expect("Hashes file has a parent");
-                fs::create_dir_all(data_dir).map_err(|e| {
-                    api::Error::Other(format!(
-                        "Error while creating data dir `{}`: {e}",
-                        data_dir.display()
-                    ))
-                })?;
-                fs::write(
-                    &hashes_file,
-                    rmp_serde::to_vec(&hashes).expect("Hashes serialization is infallible"),
-                )
-                .map_err(|e| {
-                    api::Error::Other(format!(
-                        "Error while saving hashes `{}`: {e}",
-                        hashes_file.display()
-                    ))
-                })?;
+                hashes.save()?;
                 Ok(())
             },
             &CreateCommandOpts::default(),

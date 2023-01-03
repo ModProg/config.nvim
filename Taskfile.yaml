@@ -45,6 +45,9 @@ vars:
 tasks:
   build:
     desc: Builds the plugin and places it in ./lua
+    sources:
+      - "Cargo.*"
+      - "src/**/*"
     cmds:
       - 'cargo build --release {{.FEATURE_FLAGS}}'
       - mkdir -p lua
@@ -89,7 +92,7 @@ tasks:
     desc: Cleans build files
     cmds:
       - cargo clean
-      - rm -r lua test/rtp/lua test/data
+      - rm -r lua test/rtp/lua/*.{so,dll} test/data
 
   install-copy:
     desc: Installs plugin in neovim by copying

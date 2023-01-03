@@ -7,26 +7,37 @@ keys:
     silent: false
     unique: false
     expression: false
-    leader: ""
+    leader: ''
     j: gj
     mappings:
       silent: super silent
 set:
-  - expandtab 
-  - nonumber 
-  - number: false 
-  - mouse: a 
-    completeopt: ["menuone"] 
-  - shortmess: 
+  - expandtab
+  - nonumber
+  - number: false
+  - mouse: a
+    completeopt: ['menuone']
+  - shortmess:
       append: c
-      "+": c
+      '+': c
       prepend: c
-      "^": c
+      '^': c
       remove: c
-      "-": c
-      assign: c 
-      "value": c 
+      '-': c
+      assign: c
+      'value': c
   - listchars:
-      assign: {tab: "<->"}
+      assign: { tab: '<->' }
   - listchars:
       tab: <->
+lua:
+  require:
+    'test':
+      - Something() # calls `require'test'.Something()`
+      - SomeValue: 'hello' # assigns `require'test'.SomeValue='hello'`
+      - setup(): 'hello' # calls `require'test'.setup('hello')`
+      - setup(): # calls `require'test'.setup({a='hi', b='hello'})`
+          a: 'hi'
+          b: 'hello'
+    'some.thing':
+      - a.b() # calls `require'some.thing'.a.b()`

@@ -1,6 +1,7 @@
-/target
-/lua
+*.dll
+*.so
+/.task
 /data
 /release.zip
-/test/rtp/lua
+/target
 /test/data

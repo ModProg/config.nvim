@@ -11,6 +11,8 @@ mod set;
 pub use set::*;
 mod keys;
 pub use keys::*;
+mod lua;
+pub use lua::*;
 
 use crate::*;
 
@@ -47,6 +49,7 @@ pub struct Config {
     #[merge(strategy = merge::vec::append)]
     #[serde_as(deserialize_as = "OneOrMany<_>")]
     auto_commands: Vec<AutoCommand>,
+    lua: LuaConfig,
 }
 
 impl Config {
@@ -119,6 +122,7 @@ impl Config {
                 )?;
             }
         }
+        self.lua.apply()?;
         Ok(())
     }
 }

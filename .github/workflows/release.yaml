@@ -11,7 +11,7 @@ jobs:
       matrix:
         # os: [linux, windows, macos]
         os: [linux, macos]
-        neovim_version: ["0.7", "0.8", nightly]
+        neovim_version: ["0.8", "0.9", nightly]
         include:
           - runner: ubuntu-latest
             os: linux

@@ -9,7 +9,7 @@ jobs:
       matrix:
         # os: [ubuntu-latest, windows-latest, macos-latest]
         os: [ubuntu-latest, macos-latest]
-        neovim_version: ['0.7', '0.8', nightly]
+        neovim_version: ['0.8', '0.9', nightly]
 
     runs-on: ${{ matrix.os }}
     steps:

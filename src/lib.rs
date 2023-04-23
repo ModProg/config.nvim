@@ -58,10 +58,7 @@ fn config_files(path: &Path) -> impl Iterator<Item = (PathBuf, String, Config)> 
 
 fn get_config_dirs() -> Vec<PathBuf> {
     let mut nvim_folders = Vec::new();
-    let cwd = match env::current_dir() {
-        Ok(it) => it,
-        Err(_) => return Vec::new(),
-    };
+    let Ok(cwd) = env::current_dir() else { return Vec::new() };
     let mut cwd = cwd.as_path();
     let nvim_dir = cwd.join(".nvim/config");
     if nvim_dir.is_dir() {
@@ -86,11 +83,10 @@ fn load_config(_: ()) -> Result<()> {
 
     let mut conditional_configs: HashMap<Condition, Config> = HashMap::new();
 
-    for path in get_files("config/*.yml")?
-        .into_iter()
-        .chain(get_files("config/*.yaml")?.into_iter())
-        .chain(get_files("config/*.json")?.into_iter())
-        .chain(get_files("config/*.toml")?.into_iter())
+    for path in get_files("config/*.toml")?
+        .chain(get_files("config/*.yaml")?)
+        .chain(get_files("config/*.json")?)
+        .chain(get_files("config/*.toml")?)
     {
         continue_on_error!(Config::load(path.as_path()), error, "{error}")
             .0
@@ -138,19 +134,19 @@ fn load_config(_: ()) -> Result<()> {
     if let Some(config) = conditional_configs.remove(&Condition::default()) {
         config.apply(false)?;
     }
-    for (condition, config) in conditional_configs {
-        api::create_autocmd(
-            condition.events().iter().map(AsRef::as_ref),
-            &condition
-                .opts()
-                .callback(move |_| -> Result<bool> {
-                    config.apply(true)?;
-                    Ok(false)
-                })
-                .build(),
-        )
-        .expect("Create autocommand for conditional config");
-    }
+    // for (condition, config) in conditional_configs {
+    //     api::create_autocmd(
+    //         condition.events().iter().map(AsRef::as_ref),
+    //         &condition
+    //             .opts()
+    //             .callback(move |_| -> Result<bool> {
+    //                 config.apply(true)?;
+    //                 Ok(false)
+    //             })
+    //             .build(),
+    //     )
+    //     .expect("Create autocommand for conditional config");
+    // }
     Ok(())
 }
 

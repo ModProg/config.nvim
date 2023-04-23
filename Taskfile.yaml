@@ -4,10 +4,10 @@ version: '3'
 
 env:
   # Uncomment to set neovim version directly
-  # NEOVIM_VERSION: 0.7
+  # NEOVIM_VERSION: 0.8
   # Version of neovim to choose when `NEOVIM_VERSION` environment variable is
   # not provided and recognision of system version failed
-  DEFAULT_NEOVIM_VERSION: '0.8'
+  DEFAULT_NEOVIM_VERSION: '0.9'
   # Uncomment to manually set crate name
   # CRATE_NAME: crate
   # Uncomment to manually set lua module name

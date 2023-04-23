@@ -114,7 +114,7 @@ impl Config {
                     triggers.iter().map(AsRef::as_ref),
                     &CreateAutocmdOpts::builder()
                         .patterns(pattern.iter().map(AsRef::as_ref))
-                        .command(cmd.clone())
+                        .command(cmd.as_str())
                         .build(),
                 )?;
             }

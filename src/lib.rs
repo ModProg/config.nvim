@@ -83,7 +83,7 @@ fn load_config(_: ()) -> Result<()> {
 
     let mut conditional_configs: HashMap<Condition, Config> = HashMap::new();
 
-    for path in get_files("config/*.toml")?
+    for path in get_files("config/*.yml")?
         .chain(get_files("config/*.yaml")?)
         .chain(get_files("config/*.json")?)
         .chain(get_files("config/*.toml")?)

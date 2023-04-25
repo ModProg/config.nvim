@@ -7,7 +7,7 @@ use oxi::{
         Buffer, Window,
     },
     conversion::{self, ToObject},
-    Object, ObjectKind, dbg,
+    Object, ObjectKind,
 };
 use serde::{Deserialize, Serialize};
 
@@ -200,10 +200,6 @@ impl Set {
             error,
             "Invalid option {key}: {error}"
         );
-        // TODO remove after (https://github.com/noib3/nvim-oxi/pull/106)
-        if scope.is_global() {
-            return Ok(());
-        }
         let set_option = set_option(scope, buffer)?;
 
         let get_option = get_option(scope, buffer)?;

@@ -37,7 +37,7 @@ impl Hashes {
     }
 
     pub fn load() -> Option<Self> {
-        rmp_serde::from_slice(&fs::read(&hashes_file()).ok()?).ok()?
+        rmp_serde::from_slice(&fs::read(hashes_file()).ok()?).ok()?
     }
 
     pub fn unhashed(

@@ -38,15 +38,15 @@ pub struct AutoCommand {
 pub struct Config {
     // TODO investigate if `or` is the right way to interpret multiple conditions
     #[merge(skip)]
-    conditions: Vec<Condition>,
+    pub conditions: Vec<Condition>,
     #[merge(strategy = merge::vec::append)]
-    keys: Vec<Keys>,
+    pub keys: Vec<Keys>,
     #[merge(strategy = merge::vec::append)]
     #[serde_as(deserialize_as = "FromInto<SetsDeserializer>")]
-    set: Vec<Set>,
+    pub set: Vec<Set>,
     #[merge(strategy = merge::vec::append)]
     #[serde_as(deserialize_as = "OneOrMany<_>")]
-    auto_commands: Vec<AutoCommand>,
+    pub auto_commands: Vec<AutoCommand>,
 }
 
 impl Config {

@@ -21,6 +21,7 @@ rmp-serde = "1.1.0"
 itertools = "0.10.3"
 # nvim-oxi = { version = "0.2.2", features = ["test"] }
 nvim-oxi = { git = "https://github.com/noib3/nvim-oxi/", features = ["test"] }
+# nvim-oxi = { path = "../nvim-oxi/crates/nvim-oxi/", features = ["test"] }
 
 [features]
 default = ["0.9"]
